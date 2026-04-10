@@ -1,4 +1,4 @@
 /.venv
-/asd.json
-/school_data.db
+*.json
+*.db
 /__pycache__
