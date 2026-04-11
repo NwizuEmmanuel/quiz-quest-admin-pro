@@ -2,7 +2,8 @@ import json
 import os
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 
                              QLineEdit, QPushButton, QComboBox, QStackedWidget, 
-                             QTextEdit, QListWidget, QFileDialog, QFrame, QMessageBox)
+                             QTextEdit, QListWidget, QFileDialog, QFrame, QMessageBox,
+                             QSpinBox) # Added QSpinBox
 from PySide6.QtCore import Signal
 
 class QuizTab(QWidget):
@@ -13,7 +14,7 @@ class QuizTab(QWidget):
         self.quiz_bank: list[dict[str, object]] = []
         self.editing_index = -1
         self.has_unsaved_changes = False
-        self.current_file_path = None # Tracks the currently opened/saved file
+        self.current_file_path = None 
         self.setup_ui()
 
     def setup_ui(self):
@@ -28,11 +29,27 @@ class QuizTab(QWidget):
         self.q_input.textChanged.connect(self.set_modified)
         layout.addWidget(self.q_input)
 
-        layout.addWidget(QLabel("<b>TYPE</b>"))
+        # --- Section: Type & Time Limit (Added Time Limit here) ---
+        type_time_layout = QHBoxLayout()
+        
+        v_type = QVBoxLayout()
+        v_type.addWidget(QLabel("<b>TYPE</b>"))
         self.type_sel = QComboBox()
         self.type_sel.addItems(["Multiple Choice", "Identification"])
         self.type_sel.currentIndexChanged.connect(self.on_type_switch)
-        layout.addWidget(self.type_sel)
+        v_type.addWidget(self.type_sel)
+        
+        v_time = QVBoxLayout()
+        v_time.addWidget(QLabel("<b>TIME LIMIT (SEC)</b>"))
+        self.time_limit = QSpinBox()
+        self.time_limit.setRange(5, 600) # 5 seconds to 10 minutes
+        self.time_limit.setValue(30)
+        self.time_limit.valueChanged.connect(self.set_modified)
+        v_time.addWidget(self.time_limit)
+        
+        type_time_layout.addLayout(v_type, 2)
+        type_time_layout.addLayout(v_time, 1)
+        layout.addLayout(type_time_layout)
 
         # --- Section: Answer Details ---
         self.stack = QStackedWidget()
@@ -118,7 +135,8 @@ class QuizTab(QWidget):
         self.q_list.clear()
         for i, q in enumerate(self.quiz_bank, 1):
             short = "MC" if q["type"] == "Multiple Choice" else "ID"
-            self.q_list.addItem(f"{i}. [{short}] {str(q['question'])[:40]}...")
+            time = q.get("time_limit", 30) # Get time for display
+            self.q_list.addItem(f"{i}. [{short}] ({time}s) {str(q['question'])[:35]}...")
 
     def import_quiz(self):
         path, _ = QFileDialog.getOpenFileName(self, "Import Quiz", "", "JSON (*.json)")
@@ -126,16 +144,14 @@ class QuizTab(QWidget):
             try:
                 with open(path, 'r') as f:
                     self.quiz_bank = json.load(f)
-                    self.current_file_path = path # Set the path for quick saving
+                    self.current_file_path = path 
                     self.refresh_list(); self.clear_inputs()
                     self.has_unsaved_changes = False; self.changed.emit(False)
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to load: {e}")
 
     def quick_save(self):
-        """Saves directly to current_file_path if it exists, otherwise calls export."""
         if not self.quiz_bank: return False
-        
         if self.current_file_path:
             try:
                 with open(self.current_file_path, 'w') as f:
@@ -148,42 +164,54 @@ class QuizTab(QWidget):
                 QMessageBox.critical(self, "Error", f"Could not save: {e}")
                 return False
         else:
-            return self.export_quiz() # Fallback to Save As
+            return self.export_quiz()
 
     def export_quiz(self):
-        """Save As logic."""
         if not self.quiz_bank: return False
         path, _ = QFileDialog.getSaveFileName(self, "Export Quiz", "", "JSON (*.json)")
         if path:
-            self.current_file_path = path # Remember this new location
+            self.current_file_path = path 
             return self.quick_save()
         return False
 
-    # --- Standard CRUD Logic ---
     def save_question(self):
         prompt = self.q_input.toPlainText().strip()
         if not prompt: return
-        data: dict[str, object] = {"type": self.type_sel.currentText(), "question": prompt}
+        
+        # Modified to include time_limit
+        data: dict[str, object] = {
+            "type": self.type_sel.currentText(), 
+            "question": prompt,
+            "time_limit": self.time_limit.value() 
+        }
+        
         if data["type"] == "Multiple Choice":
             opts = [o.text().strip() for o in self.opts]
             data["options"], data["answer"] = opts, opts[self.correct_c.currentIndex()]
         else:
             data["answer"] = self.id_ans.text().strip()
+            
         if self.editing_index == -1: self.quiz_bank.append(data)
         else: self.quiz_bank[self.editing_index] = data
+        
         self.refresh_list(); self.clear_inputs(); self.set_modified()
 
     def load_for_edit(self, item):
         self.editing_index = self.q_list.row(item)
         q = self.quiz_bank[self.editing_index]
+        
         self.q_input.setPlainText(str(q["question"]))
         self.type_sel.setCurrentText(str(q["type"]))
+        # Load time limit
+        self.time_limit.setValue(int(q.get("time_limit", 30)))
+        
         if q["type"] == "Multiple Choice":
             for i, opt in enumerate(q.get("options", [])): 
                 if i < 4: self.opts[i].setText(str(opt))
             if q["answer"] in q.get("options", []):
                 self.correct_c.setCurrentIndex(q["options"].index(q["answer"]))
         else: self.id_ans.setText(str(q["answer"]))
+        
         self.add_btn.setText("Update Question"); self.cancel_btn.setVisible(True)
 
     def delete_question(self):
@@ -194,5 +222,6 @@ class QuizTab(QWidget):
 
     def clear_inputs(self):
         self.editing_index = -1; self.q_input.clear(); self.id_ans.clear()
+        self.time_limit.setValue(30) # Reset to default
         for o in self.opts: o.clear()
         self.add_btn.setText("Add to Quiz"); self.cancel_btn.setVisible(False)

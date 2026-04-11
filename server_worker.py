@@ -1,16 +1,22 @@
-from flask import Flask, request, jsonify
+import os
+import json
 import sqlite3
 import threading
+from flask import Flask, request, jsonify
+from datetime import datetime
 
 app = Flask(__name__)
-DB_PATH = "school_data.db"
+
+# Get the absolute path to the directory this script is in
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "quiz_system.db")
 
 def get_db():
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
 
-# API: Student Login Authentication
+# --- API: Student Login Authentication ---
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.json
@@ -31,64 +37,81 @@ def login():
         }), 200
     return jsonify({"status": "error", "message": "Invalid credentials"}), 401
 
-import json
-
-from datetime import datetime
-
-# API: Get Schedules (Filtered by current time)
+# --- API: Get Schedules (Filtered by current time) ---
 @app.route('/api/get_schedules', methods=['GET'])
 def get_schedules():
     db = get_db()
-    # Get current server time in the same format as the Admin App
-    now = datetime.now().strftime("%Y-%m-%d %H:mm")
+    # USE SECONDS: Matches the Admin App format exactly
+    now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     
-    # Select only quizzes where 'now' is between start and end
-    query = """SELECT id, quiz_title, quiz_name, start_time, end_time 
-               FROM schedules WHERE ? BETWEEN start_time AND end_time"""
+    print(f"Checking for quizzes active at: {now}")
+
+    query = """SELECT id, quiz_title, quiz_name FROM schedules 
+               WHERE ? BETWEEN start_time AND end_time"""
+    
     schedules = db.execute(query, (now,)).fetchall()
     db.close()
-    
     return jsonify([dict(s) for s in schedules]), 200
 
+# --- API: Get Full Quiz Data ---
 @app.route('/api/get_full_quiz', methods=['POST'])
 def get_full_quiz():
     data = request.json
     schedule_id = data.get('schedule_id')
     
     db = get_db()
-    # Ensure quiz_title is selected
     query = "SELECT quiz_title, quiz_data FROM schedules WHERE id=?"
     quiz = db.execute(query, (schedule_id,)).fetchone()
     db.close()
     
     if quiz:
         return jsonify({
-            "title": quiz['quiz_title'], # This creates the 'title' key
+            "title": quiz['quiz_title'],
             "questions": json.loads(quiz['quiz_data'])
         }), 200
     
     return jsonify({"status": "error", "message": "Quiz not found"}), 404
 
-# API: Receive Quiz Results
+# --- API: Receive Quiz Results (Updated with Defeated Boss) ---
 @app.route('/api/submit_results', methods=['POST'])
 def submit_results():
     data = request.json
     db = get_db()
-    # Add quiz_details to your INSERT query
-    db.execute("INSERT INTO results (student_id, quiz_title, score, total, quiz_details) VALUES (?,?,?,?,?)",
-               (data['student_id'], data['quiz_title'], data['score'], data['total'], json.dumps(data.get('details'))))
-    db.commit()
-    return jsonify({"status": "success"}), 201
+    
+    # Store 'quiz_details' (the history) as a JSON string
+    details_json = json.dumps(data.get('quiz_details', []))
+    
+    # NEW: Get defeated_boss from request, default to 'None' if missing
+    boss = data.get('defeated_boss', 'None')
+    
+    # Updated query to include defeated_boss column
+    query = """INSERT INTO results (student_id, quiz_title, score, total, defeated_boss, quiz_details) 
+               VALUES (?, ?, ?, ?, ?, ?)"""
+    
+    try:
+        db.execute(query, (
+            data['student_id'], 
+            data['quiz_title'], 
+            data['score'], 
+            data['total'], 
+            boss,
+            details_json
+        ))
+        db.commit()
+        db.close()
+        return jsonify({"status": "success"}), 201
+    except Exception as e:
+        if db: db.close()
+        return jsonify({"status": "error", "message": str(e)}), 500
 
-# Ensure this class in server_worker.py matches the call
+# --- Server Thread Management ---
 class ServerThread(threading.Thread):
-    def __init__(self, host='127.0.0.1', port=7777):
+    def __init__(self, host='0.0.0.0', port=7777): # Set host to 0.0.0.0 for LAN access
         super().__init__()
         self.host = host
         self.port = port
         self.daemon = True
 
     def run(self):
-        # We use app.run directly. Threading handles the non-blocking part.
-        from server_worker import app 
+        # We run the app defined in this same file
         app.run(host=self.host, port=self.port, debug=False, use_reloader=False)

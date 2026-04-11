@@ -26,7 +26,6 @@ class StudentTab(QWidget):
         # --- Input Section ---
         layout.addWidget(QLabel("<b>STUDENT REGISTRATION / UPDATE</b>"))
         
-        # Grid-like layout for inputs
         self.f_name = QLineEdit(); self.f_name.setPlaceholderText("e.g. John")
         self.l_name = QLineEdit(); self.l_name.setPlaceholderText("e.g. Doe")
         self.section = QLineEdit(); self.section.setPlaceholderText("e.g. Grade 10 - Blue")
@@ -77,7 +76,6 @@ class StudentTab(QWidget):
         self.refresh_table()
 
     def save_student(self):
-        """Handles both Creation and Updating."""
         f = self.f_name.text().strip()
         l = self.l_name.text().strip()
         s = self.section.text().strip()
@@ -89,15 +87,15 @@ class StudentTab(QWidget):
             return
 
         if self.selected_student_id:
-            # Update existing
+            # USE EXECUTE FOR UPDATES
             sql = "UPDATE students SET firstname=?, lastname=?, section=?, username=?, password=? WHERE id=?"
-            self.db.query(sql, (f, l, s, u, p, self.selected_student_id))
+            self.db.execute(sql, (f, l, s, u, p, self.selected_student_id))
             QMessageBox.information(self, "Updated", "Student record updated successfully.")
         else:
-            # Insert new
+            # USE EXECUTE FOR INSERTS
             try:
                 sql = "INSERT INTO students (firstname, lastname, section, username, password) VALUES (?,?,?,?,?)"
-                self.db.query(sql, (f, l, s, u, p))
+                self.db.execute(sql, (f, l, s, u, p))
                 QMessageBox.information(self, "Saved", "New student registered.")
             except:
                 QMessageBox.critical(self, "Error", "Username might already exist.")
@@ -106,29 +104,28 @@ class StudentTab(QWidget):
         self.clear_form()
 
     def load_to_form(self, item):
-        """When a row is clicked, load the data back into the inputs for updating."""
         row = item.row()
-        # Retrieve the ID from the first column
         self.selected_student_id = self.table.item(row, 0).text()
         
-        # Re-query the DB to get the password (which isn't in the table)
-        res = self.db.query("SELECT firstname, lastname, section, username, password FROM students WHERE id=?", 
-                            (self.selected_student_id,)).fetchone()
-        
+        # Query returns a list
+        res = self.db.query("SELECT * FROM students WHERE id=?", (self.selected_student_id,))
+
         if res:
-            self.f_name.setText(res[0])
-            self.l_name.setText(res[1])
-            self.section.setText(res[2])
-            self.user.setText(res[3])
-            self.pwd.setText(res[4])
+            data = res[0] # Access first row in list
+            
+            # Use the correct variable names (self.f_name, etc.)
+            self.f_name.setText(data["firstname"])
+            self.l_name.setText(data["lastname"])
+            self.section.setText(data["section"])
+            self.user.setText(data["username"])
+            self.pwd.setText(data["password"])
+            
             self.save_btn.setText("Update Student Information")
             self.save_btn.setStyleSheet("background-color: #3498db; color: white; font-weight: bold; height: 35px;")
 
     def filter_table(self):
-        """Real-time search filter."""
         search_text = self.search_input.text().lower()
         for i in range(self.table.rowCount()):
-            # Check First Name (Col 1) and Last Name (Col 2)
             first_name = self.table.item(i, 1).text().lower()
             last_name = self.table.item(i, 2).text().lower()
             
@@ -146,7 +143,8 @@ class StudentTab(QWidget):
                                      QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         
         if confirm == QMessageBox.StandardButton.Yes:
-            self.db.query("DELETE FROM students WHERE id=?", (self.selected_student_id,))
+            # USE EXECUTE FOR DELETES
+            self.db.execute("DELETE FROM students WHERE id=?", (self.selected_student_id,))
             self.refresh_table()
             self.clear_form()
 
@@ -163,9 +161,10 @@ class StudentTab(QWidget):
     def refresh_table(self):
         self.table.setRowCount(0)
         res = self.db.query("SELECT id, firstname, lastname, section, username FROM students")
-        for r_idx, row in enumerate(res.fetchall()):
+        for r_idx, row in enumerate(res): 
             self.table.insertRow(r_idx)
-            for c_idx, val in enumerate(row):
-                item = QTableWidgetItem(str(val))
-                item.setFlags(item.flags() ^ Qt.ItemFlag.ItemIsEditable) # Make table read-only
-                self.table.setItem(r_idx, c_idx, item)
+            self.table.setItem(r_idx, 0, QTableWidgetItem(str(row["id"])))
+            self.table.setItem(r_idx, 1, QTableWidgetItem(str(row["firstname"])))
+            self.table.setItem(r_idx, 2, QTableWidgetItem(str(row["lastname"])))
+            self.table.setItem(r_idx, 3, QTableWidgetItem(str(row["section"])))
+            self.table.setItem(r_idx, 4, QTableWidgetItem(str(row["username"])))

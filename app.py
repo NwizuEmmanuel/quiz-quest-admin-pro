@@ -1,4 +1,5 @@
 import sys
+import multiprocessing
 from PySide6.QtWidgets import QApplication, QMainWindow, QTabWidget, QMessageBox
 from database import Database
 from quiz_tab import QuizTab
@@ -6,6 +7,7 @@ from student_tab import StudentTab
 from schedule_tab import ScheduleTab
 from results_tab import ResultsTab
 from server_tab import ServerTab
+
 
 class MainApp(QMainWindow):
     def __init__(self):
@@ -68,6 +70,8 @@ class MainApp(QMainWindow):
             event.accept()
 
 if __name__ == "__main__":
+    # REQUIRED for the Stop/Start buttons to work on Windows
+    multiprocessing.freeze_support()
     app = QApplication(sys.argv)
     
     # Optional: Apply a global style for a cleaner look

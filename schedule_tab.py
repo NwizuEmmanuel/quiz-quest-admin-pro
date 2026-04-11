@@ -36,15 +36,14 @@ class ScheduleTab(QWidget):
         self.main_layout.addWidget(QLabel("Display Title:"))
         self.main_layout.addWidget(self.title_input)
 
-        # --- DATE TIME PICKERS (THE FIX) ---
-        # We create a horizontal layout specifically for the two pickers
+        # --- DATE TIME PICKERS ---
         dt_container = QHBoxLayout()
         
         # Start Date
         v_start = QVBoxLayout()
         self.start_dt = QDateTimeEdit(QDateTime.currentDateTime())
         self.start_dt.setCalendarPopup(True)
-        self.start_dt.setDisplayFormat("yyyy-MM-dd HH:mm") # Ensure easy reading
+        self.start_dt.setDisplayFormat("yyyy-MM-dd HH:mm")
         v_start.addWidget(QLabel("<b>Start Time:</b>"))
         v_start.addWidget(self.start_dt)
         
@@ -56,11 +55,8 @@ class ScheduleTab(QWidget):
         v_end.addWidget(QLabel("<b>End Time:</b>"))
         v_end.addWidget(self.end_dt)
         
-        # Add the vertical columns to the horizontal row
         dt_container.addLayout(v_start)
         dt_container.addLayout(v_end)
-        
-        # Add the row to the main layout
         self.main_layout.addLayout(dt_container)
 
         # --- STEP 3: SAVE BUTTONS ---
@@ -74,8 +70,8 @@ class ScheduleTab(QWidget):
 
         # --- STEP 4: TABLE ---
         self.main_layout.addWidget(QLabel("<b>ACTIVE SCHEDULES</b>"))
-        self.table = QTableWidget(0, 4)
-        self.table.setHorizontalHeaderLabels(["ID", "Title", "Start Time", "End Time"])
+        self.table = QTableWidget(0, 5) # Increased to 5 to show all columns
+        self.table.setHorizontalHeaderLabels(["ID", "Title", "Quiz File", "Start Time", "End Time"])
         self.table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
         self.table.itemClicked.connect(self.load_schedule_data)
         self.main_layout.addWidget(self.table)
@@ -90,70 +86,79 @@ class ScheduleTab(QWidget):
     def browse_quiz_file(self):
         path, _ = QFileDialog.getOpenFileName(self, "Open Quiz", "", "JSON (*.json)")
         if path:
-            with open(path, 'r') as f:
-                self.embedded_json_content = json.dumps(json.load(f))
-                self.file_display.setText(os.path.basename(path))
+            try:
+                with open(path, 'r') as f:
+                    self.embedded_json_content = json.dumps(json.load(f))
+                    self.file_display.setText(os.path.basename(path))
+            except Exception as e:
+                QMessageBox.critical(self, "File Error", f"Could not read JSON: {str(e)}")
 
     def save_schedule(self):
         title = self.title_input.text().strip()
-        # Format dates for SQLite comparison
-        start = self.start_dt.dateTime().toString("yyyy-MM-dd HH:mm")
-        end = self.end_dt.dateTime().toString("yyyy-MM-dd HH:mm")
+        start = self.start_dt.dateTime().toString("yyyy-MM-dd HH:mm:ss")
+        end = self.end_dt.dateTime().toString("yyyy-MM-dd HH:mm:ss")
 
         if not title or not self.embedded_json_content:
             QMessageBox.warning(self, "Error", "Title and Quiz File are required.")
             return
 
         if self.selected_sched_id:
-            # UPDATE
             sql = """UPDATE schedules SET quiz_title=?, quiz_name=?, quiz_data=?, 
                     start_time=?, end_time=? WHERE id=?"""
-            self.db.query(sql, (title, self.file_display.text(), self.embedded_json_content, 
+            self.db.execute(sql, (title, self.file_display.text(), self.embedded_json_content, 
                                 start, end, self.selected_sched_id))
         else:
-            # INSERT
             sql = """INSERT INTO schedules (quiz_title, quiz_name, quiz_data, start_time, end_time) 
                     VALUES (?,?,?,?,?)"""
-            self.db.query(sql, (title, self.file_display.text(), self.embedded_json_content, start, end))
+            self.db.execute(sql, (title, self.file_display.text(), self.embedded_json_content, start, end))
 
         self.refresh_table()
         self.clear_form()
 
     def load_schedule_data(self, item):
-        """Loads data from the table back into the form for updating."""
         row = item.row()
         self.selected_sched_id = self.table.item(row, 0).text()
         
-        # Fetch full data from DB (to get the embedded JSON and quiz name)
-        res = self.db.query("SELECT * FROM schedules WHERE id=?", (self.selected_sched_id,)).fetchone()
+        res = self.db.query("SELECT * FROM schedules WHERE id=?", (self.selected_sched_id,))
         
         if res:
-            # res indices match columns: id(0), title(1), quiz_name(2), quiz_data(3), code(4), start(5), end(6)
-            self.title_input.setText(res[1])
-            self.file_display.setText(res[2])
-            self.embedded_json_content = res[3]
-            self.start_dt.setDateTime(QDateTime.fromString(res[5], "yyyy-MM-dd HH:mm"))
-            self.end_dt.setDateTime(QDateTime.fromString(res[6], "yyyy-MM-dd HH:mm"))
+            data = res[0]
+            self.title_input.setText(data["quiz_title"])
+            self.file_display.setText(data["quiz_name"])
+            self.embedded_json_content = data["quiz_data"]
             
-            # UI Feedback for Update Mode
+            # Note: format "yyyy-MM-dd HH:mm:ss" must match what was saved in save_schedule
+            self.start_dt.setDateTime(QDateTime.fromString(data["start_time"], "yyyy-MM-dd HH:mm:ss"))
+            self.end_dt.setDateTime(QDateTime.fromString(data["end_time"], "yyyy-MM-dd HH:mm:ss"))
+            
             self.btn_save.setText("Update Selected Schedule")
             self.btn_save.setStyleSheet("background-color: #3498db; color: white; font-weight: bold; height: 35px;")
 
     def delete_schedule(self):
         if self.selected_sched_id:
-            self.db.query("DELETE FROM schedules WHERE id=?", (self.selected_sched_id,))
-            self.refresh_table(); self.clear_form()
+            self.db.execute("DELETE FROM schedules WHERE id=?", (self.selected_sched_id,))
+            self.refresh_table()
+            self.clear_form()
+        else:
+            QMessageBox.information(self, "Select", "Please select a schedule from the table first.")
 
     def clear_form(self):
         self.selected_sched_id = None
         self.embedded_json_content = ""
+        self.title_input.clear()
+        self.file_display.clear()
+        self.start_dt.setDateTime(QDateTime.currentDateTime())
+        self.end_dt.setDateTime(QDateTime.currentDateTime().addDays(1))
         self.btn_save.setText("Save Schedule")
-        self.btn_save.setStyleSheet("background-color: #2ecc71; color: white; font-weight: bold; height: 35px;")
+        self.btn_save.setStyleSheet("background-color: #2ecc71; color: white; font-weight: bold; height: 40px;")
 
     def refresh_table(self):
         self.table.setRowCount(0)
-        res = self.db.query("SELECT id, quiz_title, start_time, end_time FROM schedules")
-        for r_idx, row in enumerate(res.fetchall()):
+        res = self.db.query("SELECT id, quiz_title, quiz_name, start_time, end_time FROM schedules")
+        for r_idx, row in enumerate(res): 
             self.table.insertRow(r_idx)
-            for c_idx, val in enumerate(row):
-                self.table.setItem(r_idx, c_idx, QTableWidgetItem(str(val)))
+            self.table.setItem(r_idx, 0, QTableWidgetItem(str(row["id"])))
+            self.table.setItem(r_idx, 1, QTableWidgetItem(str(row["quiz_title"])))
+            self.table.setItem(r_idx, 2, QTableWidgetItem(str(row["quiz_name"])))
+            self.table.setItem(r_idx, 3, QTableWidgetItem(str(row["start_time"])))
+            self.table.setItem(r_idx, 4, QTableWidgetItem(str(row["end_time"])))
