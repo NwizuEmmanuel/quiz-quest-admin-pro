@@ -1,7 +1,3 @@
-This is a comprehensive `README.md` designed for your **Quiz Quest Architecture Pro** system. It clearly separates the Admin (PySide6), the Server (Flask), and the Client (Godot) components.
-
----
-
 # 📝 Quiz Quest Architecture Pro
 
 A full-stack, distributed quiz management system featuring a desktop **Admin Dashboard**, a **Flask REST API**, and a **Godot Game Engine** client. This system allows educators to create quizzes, manage students, schedule exams, and track real-time "Boss Battle" results.
