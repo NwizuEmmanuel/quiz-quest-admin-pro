@@ -22,6 +22,16 @@ class Database:
             pass_code TEXT,
             start_time TEXT,
             end_time TEXT)''')
+        
+        # Inside your Database class init or setup method:
+        self.query("""CREATE TABLE IF NOT EXISTS results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_id INTEGER,
+            quiz_title TEXT,
+            score INTEGER,
+            total INTEGER,
+            date_taken TIMESTAMP,
+            FOREIGN KEY(student_id) REFERENCES students(id))""")
         self.conn.commit()
 
     def query(self, sql, params=()):

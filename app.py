@@ -4,6 +4,7 @@ from database import Database
 from quiz_tab import QuizTab
 from student_tab import StudentTab
 from schedule_tab import ScheduleTab
+from server_tab import ServerTab
 
 class MainApp(QMainWindow):
     def __init__(self):
@@ -26,6 +27,8 @@ class MainApp(QMainWindow):
         self.tabs.addTab(self.quiz_page, "1. Quiz Creator")
         self.tabs.addTab(self.student_page, "2. Student Manager")
         self.tabs.addTab(self.schedule_page, "3. Quiz Scheduling")
+        self.server_page = ServerTab()
+        self.tabs.addTab(self.server_page, "4. Server Control")
 
     def closeEvent(self, event):
         """Handle unsaved changes in the Quiz Tab before exiting."""
