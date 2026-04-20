@@ -75,11 +75,11 @@ if __name__ == "__main__":
     app = QApplication(sys.argv)
     
     # Optional: Apply a global style for a cleaner look
-    app.setStyleSheet("""
-        QMainWindow { background-color: #f5f5f5; }
-        QPushButton { padding: 5px; border-radius: 3px; }
-        QTableWidget { gridline-color: #dcdcdc; }
-    """)
+    # app.setStyleSheet("""
+    #     QMainWindow { background-color: #f5f5f5; }
+    #     QPushButton { padding: 5px; border-radius: 3px; }
+    #     QTableWidget { gridline-color: #dcdcdc; }
+    # """)
     
     window = MainApp()
     window.show()
