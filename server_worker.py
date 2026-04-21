@@ -78,30 +78,45 @@ def submit_results():
     data = request.json
     db = get_db()
     
-    # Store 'quiz_details' (the history) as a JSON string
-    details_json = json.dumps(data.get('quiz_details', []))
-    
-    # NEW: Get defeated_boss from request, default to 'None' if missing
-    boss = data.get('defeated_boss', 'None')
-    
-    # Updated query to include defeated_boss column
-    query = """INSERT INTO results (student_id, quiz_title, score, total, defeated_boss, quiz_details) 
-               VALUES (?, ?, ?, ?, ?, ?)"""
+    student_id = data.get('student_id')
+    quiz_title = data.get('quiz_title')
     
     try:
-        db.execute(query, (
-            data['student_id'], 
-            data['quiz_title'], 
+        # 1. Check if a record already exists for this student and this quiz
+        check_query = "SELECT id FROM results WHERE student_id = ? AND quiz_title = ?"
+        existing_record = db.execute(check_query, (student_id, quiz_title)).fetchone()
+        
+        if existing_record:
+            db.close()
+            # 403 Forbidden or 409 Conflict are good status codes for "Already Submitted"
+            return jsonify({
+                "status": "error", 
+                "message": "You have already submitted a result for this quiz."
+            }), 409
+
+        # 2. If no record exists, proceed with the submission
+        details_json = json.dumps(data.get('quiz_details', []))
+        boss = data.get('defeated_boss', 'None')
+        
+        insert_query = """INSERT INTO results (student_id, quiz_title, score, total, defeated_boss, quiz_details) 
+                          VALUES (?, ?, ?, ?, ?, ?)"""
+        
+        db.execute(insert_query, (
+            student_id, 
+            quiz_title, 
             data['score'], 
             data['total'], 
             boss,
             details_json
         ))
+        
         db.commit()
         db.close()
         return jsonify({"status": "success"}), 201
+
     except Exception as e:
-        if db: db.close()
+        if db: 
+            db.close()
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # --- Server Thread Management ---
